@@ -1168,6 +1168,52 @@ def analyze(symbol, force_include=False):
         except Exception:
             pass
 
+        # ── Calendrier des événements à venir ────────────────────
+        events = []
+        try:
+            cal = tk.calendar
+            if cal is not None:
+                def fmt_date(v):
+                    if v is None: return ""
+                    if hasattr(v, "strftime"): return v.strftime("%d/%m/%Y")
+                    try: return str(v)[:10]
+                    except: return ""
+
+                # Résultats / publication CA
+                for key, label, emoji in [
+                    ("Earnings Date",       "Publication résultats",    "📊"),
+                    ("Ex-Dividend Date",    "Détachement dividende",     "💰"),
+                    ("Dividend Date",       "Paiement dividende",        "💰"),
+                ]:
+                    val = cal.get(key)
+                    if val is not None:
+                        # Peut être une liste ou une valeur simple
+                        dates = val if isinstance(val, list) else [val]
+                        for d_val in dates[:2]:
+                            d_str = fmt_date(d_val)
+                            if d_str:
+                                events.append({"emoji": emoji, "label": label, "date": d_str})
+
+                # Chiffre d'affaires estimé prochain trimestre
+                rev_est = info.get("revenueEstimate") or info.get("revenueForCurrentYear")
+                if rev_est:
+                    events.append({"emoji": "📈", "label": "CA estimé prochain exercice",
+                                   "date": f"{rev_est/1e6:.0f} M {curr_sym}"})
+
+            # Essayer aussi earningsTimestamps
+            try:
+                ed = info.get("earningsTimestamps") or []
+                for ts in ed[:2]:
+                    if isinstance(ts, (int, float)) and ts > 0:
+                        from datetime import datetime as _dt
+                        d_str = _dt.fromtimestamp(ts).strftime("%d/%m/%Y")
+                        if not any(e.get("date") == d_str for e in events):
+                            events.append({"emoji": "📊", "label": "Publication résultats", "date": d_str})
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         return {
             "ticker":          symbol,
             "name":            info.get("longName") or info.get("shortName") or symbol,
@@ -1213,6 +1259,7 @@ def analyze(symbol, force_include=False):
             "tech_desc":    tech_desc,
             "about":        about_text,
             "insider":      insider_data,
+            "events":       events,
             "patterns":     patterns,
             "chartLabels":  chart_labels,
             "chartPrices":  chart_prices,
@@ -1313,9 +1360,10 @@ def row_html(d):
               'padding:1px 6px;border-radius:5px;font-size:.68em;font-weight:700;"> PEA</span>'
               if is_pea else "")
     flag_td = (f' <span title="{cname}" style="font-size:.9em;">{flag}</span>' if flag else "")
-    row_style = ' style="border-left:3px solid #7c3aed;"' if is_wl else ""
+    row_style_attr = f' style="border-left:3px solid #7c3aed;cursor:pointer;"' if is_wl else ' style="cursor:pointer;"'
     return (
-        f'<tr{row_style}><td class="t-tk">{wl_td}{d["ticker"]}</td>'
+        f'<tr{row_style_attr} onclick="openDetails(\'{d["ticker"]}\')">'
+        f'<td class="t-tk">{wl_td}{d["ticker"]}</td>'
         f'<td>{d["sector"]}{flag_td}{pea_td}</td>'
         f'<td class="t-num">{f2(d["price"])}{d["currency"]}</td>'
         f'<td class="t-tag">{d["consensus"]}</td>'
@@ -1394,7 +1442,8 @@ table{{width:100%;border-collapse:collapse;min-width:900px;}}
 th{{background:rgba(255,255,255,.04);color:var(--fg2);font-size:1em;font-weight:700;
     padding:16px 14px;text-align:left;border-bottom:2px solid var(--border);white-space:nowrap;}}
 td{{padding:14px;border-bottom:1px solid rgba(255,255,255,.04);font-size:1em;vertical-align:middle;}}
-tr:hover td{{background:rgba(255,255,255,.02);}}
+tr:hover td{{background:rgba(59,130,246,.07);transition:background .15s;}}
+tr:hover .t-tk{{color:var(--blue);}}
 .t-tk{{font-weight:800;font-size:1.2em;white-space:nowrap;}}
 .t-num{{font-weight:700;white-space:nowrap;}}
 .t-tag{{font-weight:600;color:var(--fg2);}}
@@ -1459,8 +1508,8 @@ tr:hover td{{background:rgba(255,255,255,.02);}}
     <div class="sub">{date_str} — Actualisé à <span style="color:var(--blue)">{time_str}</span></div>
     <div class="badges">{badges}<span class="badge">{len(stocks)} opportunités</span></div>
     <div class="tab-nav" id="main-tab-nav">
-      <button class="tab-btn active" onclick="showTab('recap')">📋 Récapitulatif</button>
-      <button class="tab-btn" onclick="showTab('cartes')">🃏 Cartes</button>
+      <button id="tab-btn-recap"  class="tab-btn active" onclick="showTab('recap')">📋 Récapitulatif</button>
+      <button id="tab-btn-cartes" class="tab-btn"        onclick="showTab('cartes')">🃏 Cartes</button>
     </div>
   </header>
 
@@ -1475,6 +1524,9 @@ tr:hover td{{background:rgba(255,255,255,.02);}}
       </tr></thead>
       <tbody>{rows}</tbody>
     </table>
+    <div style="text-align:right;margin-top:10px;font-size:.78em;color:var(--fg2);font-style:italic;">
+      👆 Cliquez sur une ligne pour voir l'analyse détaillée
+    </div>
   </div>
   </div>
 
@@ -1540,6 +1592,10 @@ tr:hover td{{background:rgba(255,255,255,.02);}}
       <div class="panel" id="d-insider-panel">
         <h3>👔 Transactions Dirigeants</h3>
         <div id="d-insider" style="margin-top:6px;"></div>
+      </div>
+      <div class="panel" id="d-events-panel">
+        <h3>📅 Calendrier des Événements</h3>
+        <div id="d-events" style="margin-top:6px;"></div>
       </div>
     </div>
 
@@ -1782,6 +1838,26 @@ window.openDetails = function(tk){{
       insiderEl.innerHTML = summaryHtml + rowsHtml;
     }}
   }}
+
+  // ── Calendrier des Événements ────────────────────────────────
+  const evtsEl = document.getElementById('d-events');
+  if (evtsEl) {{
+    const evts = d.events || [];
+    if (evts.length === 0) {{
+      evtsEl.innerHTML = '<span style="color:var(--fg2);font-size:.9em;font-style:italic;">Aucun événement trouvé (résultats, dividende...).</span>';
+    }} else {{
+      evtsEl.innerHTML = evts.map(ev => `
+        <div style="display:flex;align-items:center;gap:14px;padding:10px 0;
+                    border-bottom:1px solid rgba(255,255,255,.05);">
+          <span style="font-size:1.5em;">${{ev.emoji}}</span>
+          <div style="flex:1">
+            <div style="font-weight:600;color:#fff;font-size:.9em">${{ev.label}}</div>
+          </div>
+          <span style="font-weight:700;color:#60a5fa;font-size:.9em;white-space:nowrap;">${{ev.date}}</span>
+        </div>`).join('');
+    }}
+  }}
+
   const cats = (d.conviction_details||{{}}).categories||{{}};
   const ord = [
     {{id:'technique',   lbl:'⚙️ Technique',       col:'#60a5fa'}},
@@ -1880,17 +1956,19 @@ window.closeDet=function(){{
 window.showTab = function(tab) {{
   const recap  = document.getElementById('section-recap');
   const cartes = document.getElementById('section-cartes');
-  const btns   = document.querySelectorAll('.tab-btn');
+  const btn0   = document.getElementById('tab-btn-recap');
+  const btn1   = document.getElementById('tab-btn-cartes');
+  if (!recap || !cartes) return;
   if (tab === 'recap') {{
     recap.style.display  = 'block';
     cartes.style.display = 'none';
-    btns[0].classList.add('active');
-    btns[1].classList.remove('active');
+    if(btn0) btn0.classList.add('active');
+    if(btn1) btn1.classList.remove('active');
   }} else {{
     recap.style.display  = 'none';
     cartes.style.display = 'block';
-    btns[0].classList.remove('active');
-    btns[1].classList.add('active');
+    if(btn0) btn0.classList.remove('active');
+    if(btn1) btn1.classList.add('active');
   }}
 }};
 </script>
@@ -2010,14 +2088,6 @@ def main():
         wl_tag = " [WL]" if s.get("is_watchlist") else ""
         print(f"    {i}. {s['ticker']:<12} score={s['global_score']:.1f}  pot={s['potentiel']}  {'★'*s['stars']}{wl_tag}")
     print(f"{'='*56}\n")
-
-    # Ouverture automatique dans le navigateur
-    try:
-        abs_path = os.path.abspath(OUTPUT_FILE)
-        webbrowser.open(f"file:///{abs_path.replace(os.sep, '/')}")
-        print("  Rapport ouvert dans le navigateur.")
-    except Exception as e:
-        print(f"  Impossible d'ouvrir le navigateur : {e}")
 
 if __name__ == "__main__":
     main()
