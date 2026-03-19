@@ -1318,7 +1318,7 @@ def card_html(d):
                if pat_badges else "")
     border_style = "border-color:#7c3aed;border-width:2px;" if is_wl else ""
     return (
-        f'<div class="card" onclick="openDetails(\'{d["ticker"]}\')" style="{border_style}">'
+        f'<div class="card" data-ticker="{d["ticker"]}" style="{border_style}">'
         f'<div class="card-header"><div>'
         f'<div class="ticker">{d["ticker"]} <span style="margin-left:8px;">{st}</span>{wl_badge}</div>'
         f'<div class="company-name">{d["name"]}</div>'
@@ -1362,7 +1362,7 @@ def row_html(d):
     flag_td = (f' <span title="{cname}" style="font-size:.9em;">{flag}</span>' if flag else "")
     row_style_attr = f' style="border-left:3px solid #7c3aed;cursor:pointer;"' if is_wl else ' style="cursor:pointer;"'
     return (
-        f'<tr{row_style_attr} onclick="openDetails(\'{d["ticker"]}\')">'
+        f'<tr{row_style_attr} data-ticker="{d["ticker"]}">'
         f'<td class="t-tk">{wl_td}{d["ticker"]}</td>'
         f'<td>{d["sector"]}{flag_td}{pea_td}</td>'
         f'<td class="t-num">{f2(d["price"])}{d["currency"]}</td>'
@@ -1508,8 +1508,8 @@ tr:hover .t-tk{{color:var(--blue);}}
     <div class="sub">{date_str} — Actualisé à <span style="color:var(--blue)">{time_str}</span></div>
     <div class="badges">{badges}<span class="badge">{len(stocks)} opportunités</span></div>
     <div class="tab-nav" id="main-tab-nav">
-      <button id="tab-btn-recap"  class="tab-btn active" onclick="showTab('recap')">📋 Récapitulatif</button>
-      <button id="tab-btn-cartes" class="tab-btn"        onclick="showTab('cartes')">🃏 Cartes</button>
+      <button id="tab-btn-recap"  class="tab-btn active" data-tab="recap">📋 Récapitulatif</button>
+      <button id="tab-btn-cartes" class="tab-btn"        data-tab="cartes">🃏 Cartes</button>
     </div>
   </header>
 
@@ -1556,7 +1556,7 @@ tr:hover .t-tk{{color:var(--blue);}}
 <!-- DETAIL PAGE -->
 <div id="page-detail">
 <div class="wrap">
-  <button class="back-btn" onclick="closeDet()">&#8592; Retour au screener</button>
+  <button class="back-btn" id="btn-back">&#8592; Retour au screener</button>
 
   <div class="d-header">
     <div>
@@ -1971,6 +1971,36 @@ window.showTab = function(tab) {{
     if(btn1) btn1.classList.add('active');
   }}
 }};
+
+// ── Câblage des événements sans onclick inline ───────────────────
+// (compatible avec les politiques de sécurité de htmlpreview / GitHub Pages)
+document.addEventListener('DOMContentLoaded', function() {{
+
+  // Bouton retour
+  const btnBack = document.getElementById('btn-back');
+  if (btnBack) btnBack.addEventListener('click', function() {{ window.closeDet(); }});
+
+  // Boutons onglets tableau/cartes
+  const btnRecap  = document.getElementById('tab-btn-recap');
+  const btnCartes = document.getElementById('tab-btn-cartes');
+  if (btnRecap)  btnRecap.addEventListener('click',  function() {{ window.showTab('recap'); }});
+  if (btnCartes) btnCartes.addEventListener('click', function() {{ window.showTab('cartes'); }});
+
+  // Lignes du tableau
+  document.querySelectorAll('tr[data-ticker]').forEach(function(row) {{
+    row.addEventListener('click', function() {{
+      window.openDetails(this.getAttribute('data-ticker'));
+    }});
+  }});
+
+  // Cartes
+  document.querySelectorAll('.card[data-ticker]').forEach(function(card) {{
+    card.addEventListener('click', function() {{
+      window.openDetails(this.getAttribute('data-ticker'));
+    }});
+  }});
+
+}});
 </script>
 </body></html>"""
 
