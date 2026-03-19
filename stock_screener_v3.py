@@ -1327,14 +1327,32 @@ def row_html(d):
     )
 
 def build_html(stocks, date_str, time_str, markets):
-    cards   = "\n".join(card_html(d) for d in stocks)
-    # Tableau trié par potentiel décroissant
+    # Cartes ET tableau triés par potentiel décroissant
     def pot_val(d):
         try: return float(d["potentiel"].replace("+","").replace("%",""))
         except: return 0
-    rows    = "\n".join(row_html(d) for d in sorted(stocks, key=pot_val, reverse=True))
+    sorted_stocks = sorted(stocks, key=pot_val, reverse=True)
+    cards   = "\n".join(card_html(d) for d in sorted_stocks)
+    rows    = "\n".join(row_html(d)  for d in sorted_stocks)
     js_data = json.dumps({d["ticker"]:d for d in stocks}, ensure_ascii=False)
-    badges  = "".join(f'<span class="badge">{m}</span>' for m in markets)
+    # Badges marché avec labels lisibles et drapeaux
+    MARKET_LABELS = {
+        "CAC40":    "🇫🇷 CAC40",
+        "DAX":      "🇩🇪 DAX",
+        "AEX":      "🇳🇱 AEX",
+        "IBEX":     "🇪🇸 IBEX",
+        "FTSEMIB":  "🇮🇹 FTSE MIB",
+        "FTSE100":  "🇬🇧 FTSE100",
+        "NORDIC":   "🇸🇪 Nordic",
+        "SP500":    "🇺🇸 SP500",
+        "NASDAQ100":"🇺🇸 NASDAQ100",
+        "US_GROWTH":"🇺🇸 US Growth",
+    }
+    badges = "".join(
+        f'<span class="badge">{MARKET_LABELS.get(m, m)}</span>'
+        for m in ["CAC40","DAX","AEX","IBEX","FTSEMIB","FTSE100","NORDIC","SP500","NASDAQ100","US_GROWTH"]
+        if m in markets
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="fr">
@@ -1362,6 +1380,12 @@ h1{{font-size:3em;font-weight:800;background:linear-gradient(90deg,#fff,#9ca3af)
         color:var(--blue);padding:4px 14px;border-radius:20px;font-size:.8em;font-weight:700;}}
 /* pages */
 #page-dash{{display:block;}} #page-detail{{display:none;padding:10px;}}
+/* tab nav */
+.tab-nav{{display:flex;gap:8px;justify-content:center;margin-top:16px;}}
+.tab-btn{{background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--fg2);
+           padding:8px 24px;border-radius:20px;font-size:.85em;font-weight:600;cursor:pointer;
+           transition:all .2s;}}
+.tab-btn:hover,.tab-btn.active{{background:var(--blue);border-color:var(--blue);color:#fff;}}
 /* table */
 .tbl-wrap{{background:var(--card);border-radius:16px;border:2px solid var(--border);
            overflow-x:auto;margin-bottom:50px;padding:24px;}}
@@ -1434,8 +1458,13 @@ tr:hover td{{background:rgba(255,255,255,.02);}}
     <h1>⚡ MARKET SCREENER</h1>
     <div class="sub">{date_str} — Actualisé à <span style="color:var(--blue)">{time_str}</span></div>
     <div class="badges">{badges}<span class="badge">{len(stocks)} opportunités</span></div>
+    <div class="tab-nav" id="main-tab-nav">
+      <button class="tab-btn active" onclick="showTab('recap')">📋 Récapitulatif</button>
+      <button class="tab-btn" onclick="showTab('cartes')">🃏 Cartes</button>
+    </div>
   </header>
 
+  <div id="section-recap">
   <div class="tbl-wrap">
     <h2>📋 Récapitulatif — Top {len(stocks)}</h2>
     <table>
@@ -1447,8 +1476,11 @@ tr:hover td{{background:rgba(255,255,255,.02);}}
       <tbody>{rows}</tbody>
     </table>
   </div>
+  </div>
 
+  <div id="section-cartes" style="display:none;">
   <div class="grid">{cards}</div>
+  </div>
 
   <!-- Footer -->
   <div style="margin-top:40px;padding:24px 30px;border-top:1px solid var(--border);
@@ -1842,6 +1874,24 @@ window.closeDet=function(){{
   document.getElementById('page-dash').style.display='block';
   document.getElementById('page-detail').style.display='none';
   window.scrollTo(0,0);
+}};
+
+// Navigation onglets tableau / cartes
+window.showTab = function(tab) {{
+  const recap  = document.getElementById('section-recap');
+  const cartes = document.getElementById('section-cartes');
+  const btns   = document.querySelectorAll('.tab-btn');
+  if (tab === 'recap') {{
+    recap.style.display  = 'block';
+    cartes.style.display = 'none';
+    btns[0].classList.add('active');
+    btns[1].classList.remove('active');
+  }} else {{
+    recap.style.display  = 'none';
+    cartes.style.display = 'block';
+    btns[0].classList.remove('active');
+    btns[1].classList.add('active');
+  }}
 }};
 </script>
 </body></html>"""
